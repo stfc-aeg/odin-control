@@ -1,11 +1,12 @@
 """ Test ParameterTree class from lpdpower.
 
-Tim Nicholls, STFC Application Engingeering
+Tim Nicholls, STFC Application Engineering
 """
 
 from copy import deepcopy
 from nose.tools import *
 from odin.adapters.parameter_tree import ParameterTree, ParameterTreeError
+from odin.adapters.metadata_tree import MetadataTree
 
 class TestParameterTree():
 
@@ -53,6 +54,13 @@ class TestParameterTree():
             'branch': cls.complex_tree_branch,
         })
 
+	cls.list_tree = ParameterTree({
+	    'main' : [
+	        cls.simple_dict.copy(),
+                list(cls.list_values)
+            ]
+	})
+
     @classmethod
     def branch_callback(cls, path, value):
         cls.branch_callback_count += 1
@@ -84,7 +92,7 @@ class TestParameterTree():
 
     def test_simple_tree_missing_value(self):
 
-        with assert_raises_regexp(ParameterTreeError, 'The path missing is invalid'):
+        with assert_raises_regexp(ParameterTreeError, 'Invalid path: missing'):
             self.simple_tree.get('missing')
 
     def test_nested_tree_returns_nested_dict(self):
@@ -152,8 +160,31 @@ class TestParameterTree():
 
         param_data = {'intParam': 9876}
 
-        with assert_raises_regexp(ParameterTreeError, 'Type mismatch updating intParam'):
+        with assert_raises_regexp(ParameterTreeError, 'Merging error: the data passed to set\\(\\) is incompatible with intParam/'):
             self.complex_tree.set('intParam', param_data)
+
+    def test_list_tree_get_indexed(self):
+	ret = self.list_tree.get("main/1")
+	assert_equals({'1':self.list_values}, ret)
+
+    def test_list_tree_set_indexed(self):
+	self.list_tree.set("main/1/2", 7)
+	assert_equals(self.list_tree.get("main/1/2"), {'2': 7})
+
+    def test_list_tree_set_from_root(self):
+        tree_data = {
+	    'main' : [{
+                    'intParam': 0,
+                    'floatParam': 0.00,
+                    'boolParam': False,
+                    'strParam':  "test",
+                },
+		[1,2,3,4]
+            ]
+	}
+
+        self.list_tree.set("",tree_data)
+	assert_equals(self.list_tree.get("main"), tree_data)
 
 class TestRwParameterTree():
 

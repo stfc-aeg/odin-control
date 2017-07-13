@@ -59,6 +59,8 @@ class ParameterAccessor(object):
         """
         if callable(self._set):
             return self._set(value)
+        elif not callable(self._get):
+            self._get = value
         else:
             raise ParameterTreeError("Parameter {} is read-only".format(self.path))
 
@@ -110,10 +112,13 @@ class ParameterTree(object):
         # Descend the specified levels in the path, checking for a valid subtree
         for l in levels:
             # Check if next level of path is valid
-            if isinstance(subtree, dict) and l in subtree:
-                subtree = subtree[l]
-            else:
-                raise ParameterTreeError("The path %s is invalid" % path)
+            try:
+                if isinstance(subtree, dict):
+                    subtree = subtree[l]
+                else:
+                    subtree = subtree[int(l)]
+            except (KeyError, ValueError, IndexError):
+                raise ParameterTreeError("Invalid path: {}".format(path))
 
         # Return the populated tree at the appropriate path
         return self.__recursive_populate_tree({levels[-1]: subtree})
@@ -136,31 +141,37 @@ class ParameterTree(object):
         if levels == ['']:
             levels = []
 
-        merge_point = self.__tree
-
+        merge_parent = None
+        merge_child = self.__tree
+    
         # Descend the tree and validate each element of the path
         for l in levels:
-            if isinstance(merge_point, dict) and l in merge_point:
-                merge_point = merge_point[l]
-            else:
+            # Check if next level of path is valid
+            try:
+                merge_parent = merge_child
+                if isinstance(merge_child, dict):
+                    merge_child = merge_child[l]
+                else:
+                    merge_child = merge_child[int(l)]
+            except (KeyError, ValueError, IndexError):
                 raise ParameterTreeError("Invalid path: {}".format(path))
-
+ 
         # Add trailing / to paths where necessary
         if len(path) and path[-1] != '/':
             path += '/'
 
         # Merge data with tree
-        merged = self.__recursive_merge_tree(merge_point, data, path)
+        merged = self.__recursive_merge_tree(merge_child, data, path)
 
         # Add merged part to tree, either at the top of the tree or at the
         # appropriate level speicfied by the path
         if levels == []:
             self.__tree = merged
             return
-        merge_point = self.__tree
-        for l in levels[:-1]:
-            merge_point = merge_point[l]
-        merge_point[levels[-1]] = merged
+        if isinstance(merge_parent, dict):
+            merge_parent[levels[-1]] = merged
+        else:
+            merge_parent[int(levels[-1])] = merged
 
     def add_callback(self, path, callback):
         """Add a callback to a given path in the tree - DEPRECATED.
@@ -195,17 +206,13 @@ class ParameterTree(object):
             return node.__tree
 
         # Convert 2-tuple of one or more callables into a read-write accessor pair
-        if isinstance(node, tuple):
-            if len(node) > 1:
-                if callable(node[0]) or callable(node[1]):
-                    node = ParameterAccessor(path, node[0], node[1])
+        if isinstance(node, tuple) and len(node) == 2:
+            return ParameterAccessor(path, node[0], node[1])
 
         # Convert list or non-callable tuple to enumerated dict ; TODO - remove this?
-        if isinstance(node, list) or isinstance(node, tuple):
+        if isinstance(node, list):
             #print "BUILD 1 I AM AT ", type(node), "node", node, "path", path
-            
             return [self.__recursive_build_tree(elem, path=path) for elem in node]
-            #node = {str(i): node[i] for i in range(len(node))}
 
         # Recursively check child elements
         if isinstance(node, dict):
@@ -216,7 +223,7 @@ class ParameterTree(object):
         #if isinstance(node, list) or isinstance(node, tuple):
             #print "BUILD 3 I AM AT ", type(node), "node", node, "path", path
              
-        return node
+        return ParameterAccessor(path, node)
 
     def __recursive_populate_tree(self, node):
         """Recursively populate a tree with values.
@@ -233,7 +240,7 @@ class ParameterTree(object):
             #print "POPULATE 1 I AM AT", type(node), "node", node
             return {k: self.__recursive_populate_tree(v) for k, v in node.items()}
 
-        if isinstance(node, list) or isinstance(node, tuple):
+        if isinstance(node, list):
             #print "POPULATE 2 I AM AT", type(node), "node", node
             return [self.__recursive_populate_tree(item) for item in node]
         
@@ -269,18 +276,20 @@ class ParameterTree(object):
                 return node
             except KeyError as e:
                 raise ParameterTreeError('Invalid path: {}{}'.format(cur_path, str(e)[1:-1]))
+        if isinstance(node, list):
+            try:
+                for i, v in enumerate(new_data):
+                    node[i] = self.__recursive_merge_tree(node[i], v, cur_path + str(i) + '/')
+                return node
+            except IndexError as e:
+                raise ParameterTreeError('Invalid path: {}{}'.format(cur_path, str(e)[1:-1]))
 
-        # Update the value of the crreunt parameter, calling the set accessor if specified and
+        # Update the value of the current parameter, calling the set accessor if specified and
         # validating the type if necessary.
-        if isinstance(node, ParameterAccessor):
-            node.set(new_data)
+        if isinstance(node, ParameterAccessor) and isinstance(new_data, ParameterAccessor):
+            node.set(new_data.get())
         else:
-            # Validate type of new node matches existing
-            if type(node) is not type(new_data):
-                raise ParameterTreeError('Type mismatch updating {}: got {} expected {}'.format(
-                    cur_path[:-1], type(new_data).__name__, type(node).__name__
-                ))
-            node = new_data
+            raise ParameterTreeError("Merging error: the data passed to set() is incompatible with {}".format(cur_path))
 
         # Call any callbacks specified at this path
         for c in self.__callbacks:

@@ -171,6 +171,11 @@ def response_types(*oargs, **okwargs):
     :param okwargs: keyword argument(s), allowing default type to be specified.
     :return: decorator context
     """
+
+    #If only one return type is specified, that should be default
+    if len(oargs) == 1 and not "default" in okwargs:
+	okwargs["default"] = oargs[0]
+
     def decorator(func):
         """Function decorator."""
         def wrapper(_self, path, request):
@@ -179,18 +184,12 @@ def response_types(*oargs, **okwargs):
 
             # If Accept header is present, resolve the response type appropriately, otherwise
             # coerce to the default before calling the decorated function
-            if 'Accept' in request.headers:
-
-                if request.headers['Accept'] == '*/*':
-                    if 'default' in okwargs:
-                        response_type = okwargs['default']
-                    else:
-                        response_type = 'text/plain'
-                else:
-                    for accept_type in request.headers['Accept'].split(','):
-                        if accept_type in oargs:
-                            response_type = accept_type
-                            break
+            if 'Accept' in request.headers and not request.headers["Accept"] == "*/*":
+                for accept_type in request.headers['Accept'].split(','):
+		    #Strip arguments and check for match
+                    if accept_type.split(';')[0] in oargs:
+                        response_type = accept_type
+                        break
 
                 # If it was not possible to resolve a response type or there was not default
                 # given, return an error code 406
