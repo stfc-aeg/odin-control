@@ -58,7 +58,7 @@ class ParameterAccessor(object):
         :param value: value to set
         """
         if callable(self._set):
-            return self._set(value)
+            self._set(value)
         elif not callable(self._get):
             self._get = value
         else:
@@ -269,14 +269,14 @@ class ParameterTree(object):
         :returns: the update node at this point in the tree
         """
         # Recurse down tree if this is a branch node
-        if isinstance(node, dict):
+        if isinstance(node, dict) and isinstance(new_data, dict):
             try:
                 node.update({k: self.__recursive_merge_tree(
                     node[k], v, cur_path + k + '/') for k, v in new_data.items()})
                 return node
             except KeyError as e:
                 raise ParameterTreeError('Invalid path: {}{}'.format(cur_path, str(e)[1:-1]))
-        if isinstance(node, list):
+        if isinstance(node, list) and isinstance(new_data, dict):
             try:
                 for i, v in enumerate(new_data):
                     node[i] = self.__recursive_merge_tree(node[i], v, cur_path + str(i) + '/')

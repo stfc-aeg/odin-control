@@ -121,7 +121,7 @@ class TestApiMethodDecorators():
         return response
 
     @request_types('application/json', 'text/plain')
-    @response_types('application/json')
+    @response_types('application/json', 'text/plain')
     def decorated_method_without_default(self, path, request):
 
         if request.headers['Accept'] == self.response_type_plain:

@@ -4,8 +4,26 @@ class MetadataParameterError(Exception):
     pass
 
 class MetadataParameterAccessor(ParameterAccessor):
+    """Container class representing a leaf node on the tree.
+    
+    This class implements a parameter accessor, provding set and get methods
+    for parameters requiring calls to access them, or simply returning the
+    appropriate value if the parameter is a read-only constant. It also supports
+    the addition of metadata to control access to the parameter.
+
+    Available parameters:
+    min (?), , Parameter must satisfy parameter >= min when set
+    max (?), , Parameter must satisfy parameter <= max when set
+    type (string), default: Type of parameter when set, Specifies a type for the parameter & can be set to None to allow any type
+    writeable (boolean), default: True (False if write is impossible), Used to disable write access to a parameter
+    available (list[?]), , Gives a list of specific values the parameter must hold
+    units (string), , Extra information to be passed to the client if requested
+    """
 
     def __init__(self, path, getter=None, setter=None, **kwargs):
+        """Initialises the accessor class and checks metadata.
+        "type" and "writeable" determined automatically unless otherwise specified.
+        """
 
         ParameterAccessor.__init__(self, path, getter, setter)
 
@@ -17,10 +35,10 @@ class MetadataParameterAccessor(ParameterAccessor):
 
         #Not a value type and no setter => Default to not writeable
         if not callable(self._set) and callable(self._get):
-            self.metadata["writable"] = False
+            self.metadata["writeable"] = False
 
         #Check arguments are valid
-        valid_args = ["min", "max", "type", "writable", "available", "units"]
+        valid_args = ["min", "max", "type", "writeable", "available", "units"]
         for kw in kwargs:
             if not kw in valid_args:
                 raise MetadataParameterError("Invalid argument: {}".format(kw))
@@ -29,10 +47,15 @@ class MetadataParameterAccessor(ParameterAccessor):
         self.metadata.update(kwargs)
 
     def set(self, value):
+        """Sets the parameter with a given value if possible.
+
+        :param value: The value to assign the parameter
+        """        
+
         if not self.metadata["writeable"]:
             raise MetadataParameterError("Parameter {} is read-only".format(self.path))
 
-        if not type(value).__name__ == self.metadata["type"]:
+        if not self.metadata["type"] == None and not type(value).__name__ == self.metadata["type"]:
             raise MetadataParameterError("Type mismatch updating {}: got {} expected {}".format(
                     self.path, type(value).__name__, self.metadata["type"]))
 
@@ -40,18 +63,26 @@ class MetadataParameterAccessor(ParameterAccessor):
             raise MetadataParameterError("{} is not an allowed value for {}".format(value, self.path))
 
         if "min" in self.metadata and value < self.metadata["min"]:
-            raise MetadataParameterError("{} is below the minimum value {} for {}".format(value, self.path, self.metadata["min"]))
+            raise MetadataParameterError("{} is below the minimum value {} for {}".format(value, self.metadata["min"], self.path))
 
         if "max" in self.metadata and value > self.metadata["max"]:
-            raise MetadataParameterError("{} is above the maximum value {} for {}".format(value, self.path, self.metadata["max"]))
+            raise MetadataParameterError("{} is above the maximum value {} for {}".format(value, self.metadata["max"], self.path))
 
         ParameterAccessor.set(self, value)
 
     def get(self, metadata=False):
+        """Gets the current value of the parameter.
+
+        :param metadata: flag to include the metadata with the value
+        :returns: The value of the parameter
+        """
+
         value = ParameterAccessor.get(self)
         
         if metadata:
-            return {"value" : value}.update(self.metadata)
+            value = {"value" : value}
+            value.update(self.metadata)
+
         return value
         
                     
@@ -71,6 +102,16 @@ class MetadataTree(ParameterTree):
         This constructor recursively initialises the ParameterTree object, based on the parameter
         tree dictionary passed as an argument. This is done recursively, so that a parameter tree
         can have arbitrary depth and contain other ParameterTree instances as necessary.
+        
+        Construction syntax:
+        Children of a node are described with dictionaries/lists e.g.
+        {"parent" : {"childA" : {...}, "childB" : {...}}}
+        {"parent" : [{...}, {...}]}
+
+        Leaf nodes can be one of the following formats:
+        value   -  (value,)  -  (value, {metadata})
+        getter  -  (getter,) -  (getter, {metadata})
+        (getter, setter)     -  (getter, setter, {metadata})
 
         :param tree: dict representing the parameter tree
         """
@@ -81,7 +122,7 @@ class MetadataTree(ParameterTree):
         self.__tree = self.__recursive_build_tree(tree)
 
 
-    def get(self, path):
+    def get(self, path, metadata=False):
         """Get the values of parameters in a tree.
 
         This method returns the values at and below a specified path in the parameter tree.
@@ -89,6 +130,7 @@ class MetadataTree(ParameterTree):
         returning the result as a dictionary.
 
         :param path: path in tree to get parameter values for
+        :param metadata: flag to include metadata in the tree
         :returns: dict of parameter tree at the specified path
         """
         # Split the path by levels
@@ -99,7 +141,7 @@ class MetadataTree(ParameterTree):
 
         # If this is single level path, return the populated tree at the top level
         if levels == ['']:
-            return self.__recursive_populate_tree(subtree)
+            return self.__recursive_populate_tree(subtree, metadata=metadata)
 
         # Descend the specified levels in the path, checking for a valid subtree
         for l in levels:
@@ -113,7 +155,7 @@ class MetadataTree(ParameterTree):
                 raise MetadataParameterError("Invalid path: {}".format(path))
 
         # Return the populated tree at the appropriate path
-        return self.__recursive_populate_tree({levels[-1]: subtree})
+        return self.__recursive_populate_tree({levels[-1]: subtree}, metadata=metadata)
 
     def set(self, path, data):
         """Set the values of the parameters in a tree.
@@ -236,6 +278,7 @@ class MetadataTree(ParameterTree):
         return the values of parameters in the tree.
 
         :param node: tree node to populate and return
+        :param metadata: flag to include metadata within the tree
         :returns: populated node as a dict
         """
         # If this is a branch node recurse down the tree
