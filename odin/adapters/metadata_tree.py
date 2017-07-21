@@ -18,6 +18,8 @@ class MetadataParameterAccessor(ParameterAccessor):
     writeable (boolean), default: True (False if write is impossible), Used to disable write access to a parameter
     available (list[?]), , Gives a list of specific values the parameter must hold
     units (string), , Extra information to be passed to the client if requested
+    name, , A printable, human readable name for the parameter to be displayed on a webpage
+    dp, 2, Number of decimal places to display to (set 0 to ignore)
     """
 
     def __init__(self, path, getter=None, setter=None, **kwargs):
@@ -32,13 +34,16 @@ class MetadataParameterAccessor(ParameterAccessor):
         #Check rw capability of variable
         self.metadata["writeable"] = True
         self.metadata["type"] = type(self.get()).__name__
+        
+        if self.metadata["type"] in ["int", "float"]:
+            self.metadata["dp"] = 2
 
         #Not a value type and no setter => Default to not writeable
         if not callable(self._set) and callable(self._get):
             self.metadata["writeable"] = False
 
         #Check arguments are valid
-        valid_args = ["min", "max", "type", "writeable", "available", "units"]
+        valid_args = ["min", "max", "type", "writeable", "available", "units", "name", "dp", "description"]
         for kw in kwargs:
             if not kw in valid_args:
                 raise MetadataParameterError("Invalid argument: {}".format(kw))
@@ -56,7 +61,9 @@ class MetadataParameterAccessor(ParameterAccessor):
             raise MetadataParameterError("Parameter {} is read-only".format(self.path))
 
         if not self.metadata["type"] == None and not type(value).__name__ == self.metadata["type"]:
-            raise MetadataParameterError("Type mismatch updating {}: got {} expected {}".format(
+            #This conversion is allowed since JSON does not distinguish numerics
+            if not (type(value) == int and self.metadata["type"] == "float"):
+                raise MetadataParameterError("Type mismatch updating {}: got {} expected {}".format(
                     self.path, type(value).__name__, self.metadata["type"]))
 
         if "available" in self.metadata and not value in self.metadata["available"]:
@@ -113,14 +120,19 @@ class MetadataTree(ParameterTree):
         getter  -  (getter,) -  (getter, {metadata})
         (getter, setter)     -  (getter, setter, {metadata})
 
+        The following tags will also be treated as metadata:
+        name - A printable name for that branch of the tree
+        description - A printable description for that branch of the tree
+
         :param tree: dict representing the parameter tree
         """
         # Create empty callback list
         self.__callbacks = []
 
+        self.metadata_tags = ["name", "description", "list"]
+
         # Recursively check and initialise the tree
         self.__tree = self.__recursive_build_tree(tree)
-
 
     def get(self, path, metadata=False):
         """Get the values of parameters in a tree.
@@ -147,6 +159,9 @@ class MetadataTree(ParameterTree):
         for l in levels:
             # Check if next level of path is valid
             try:
+                if l in self.metadata_tags and not metadata:
+                    raise MetadataParameterError("Invalid path: {}".format(path))
+
                 if isinstance(subtree, dict):
                     subtree = subtree[l]
                 else:
@@ -182,6 +197,9 @@ class MetadataTree(ParameterTree):
         for l in levels:
             # Check if next level of path is valid
             try:
+                if l in self.metadata_tags:
+                    raise MetadataParameterError("Invalid path: {}".format(path))
+
                 merge_parent = merge_child
                 if isinstance(merge_child, dict):
                     merge_child = merge_child[l]
@@ -268,7 +286,15 @@ class MetadataTree(ParameterTree):
         if isinstance(node, MetadataParameterAccessor):
             return node
 
+        if len(path) > 1 and path.split('/')[-2] in self.metadata_tags:
+            return node
+
         return MetadataParameterAccessor(path, node)
+
+    def __remove_metadata(self, node):
+        for k, v in node.items():
+            if not k in self.metadata_tags:
+                yield k, v
 
     def __recursive_populate_tree(self, node, metadata=False):
         """Recursively populate a tree with values.
@@ -283,20 +309,19 @@ class MetadataTree(ParameterTree):
         """
         # If this is a branch node recurse down the tree
         if isinstance(node, dict):
-            #print "POPULATE 1 I AM AT", type(node), "node", node
-            return {k: self.__recursive_populate_tree(v, metadata=metadata) for k, v in node.items()}
+            if metadata:
+                return {k: self.__recursive_populate_tree(v, metadata=metadata) for k, v in node.items()}
+            else:
+                return {k: self.__recursive_populate_tree(v, metadata=metadata) for k, v in self.__remove_metadata(node)}
 
         if isinstance(node, list):
-            #print "POPULATE 2 I AM AT", type(node), "node", node
             return [self.__recursive_populate_tree(item, metadata=metadata) for item in node]
 
         # If this is a leaf node, check if the leaf is a r/w tuple and substitute the
         # read element of that tuple into the node
         if isinstance(node, MetadataParameterAccessor):
-            #print "POPULATE 3 I AM AT", type(node), "node", node
             return node.get(metadata=metadata)
 
-        #print "POPULATE 4 I AM AT", type(node), "node", node
         return node
 
     # Replaces values in data_tree with values from new_data
@@ -318,7 +343,7 @@ class MetadataTree(ParameterTree):
         if isinstance(node, dict):
             try:
                 node.update({k: self.__recursive_merge_tree(
-                    node[k], v, cur_path + k + '/') for k, v in new_data.items()})
+                    node[k], v, cur_path + k + '/') for k, v in self.__remove_metadata(new_data)})
                 return node
             except KeyError as e:
                 raise MetadataParameterError('Invalid path: {}{}'.format(cur_path, str(e)[1:-1]))
