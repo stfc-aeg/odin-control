@@ -9,7 +9,7 @@ if sys.version_info[0] == 2:
     required.append('futures>=3.0.0')
 
 setup(
-    name="odin",
+    name="odin_control",
     version=versioneer.get_version(),
     cmdclass=versioneer.get_cmdclass(),
     description='ODIN detector server',
