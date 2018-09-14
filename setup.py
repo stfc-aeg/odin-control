@@ -1,4 +1,5 @@
 from setuptools import setup, find_packages
+import versioneer
 
 with open('requirements.txt') as f:
     required = f.read().splitlines()
@@ -6,7 +7,9 @@ with open('requirements.txt') as f:
 setup(
     name="odin",
     description='ODIN detector server',
-    url='https://github.com/timcnicholls/odin',
+    version=versioneer.get_version(),
+    cmdclass=versioneer.get_cmdclass(),
+    url='https://github.com/stfc-aeg/odin-control',
     author='Tim Nicholls',
     author_email='tim.nicholls@stfc.ac.uk',
     packages=find_packages(),
