@@ -80,9 +80,7 @@ class DummyAdapter(ApiAdapter):
         :return: an ApiAdapterResponse object containing the appropriate response
         """
         if path == 'background_task_count':
-            response = {'response': {
-                'background_task_count': self.background_task_counter}
-            }
+            response = {'background_task_count': self.background_task_counter}
         else:
             response = {'response': 'DummyAdapter: GET on path {}'.format(path)}
 
