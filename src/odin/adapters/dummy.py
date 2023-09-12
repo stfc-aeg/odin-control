@@ -15,7 +15,7 @@ from tornado.ioloop import PeriodicCallback
 from odin.adapters.adapter import (ApiAdapter, ApiAdapterRequest,
                                    ApiAdapterResponse, request_types, response_types)
 from odin.util import decode_request_body
-
+import random
 
 class DummyAdapter(ApiAdapter):
     """Dummy adapter class for the ODIN server.
@@ -65,7 +65,13 @@ class DummyAdapter(ApiAdapter):
         """
         logging.debug(
             "%s: background task running, count = %d", self.name, self.background_task_counter)
-        self.background_task_counter += 1
+        self.background_task_counter = self.smooth_random_number(self.background_task_counter, [0, 20], 4)
+
+    def smooth_random_number(self, prev_value, max_range, max_step):
+        value = prev_value - max_step + random.randint(0, max_step*2)
+        if   value > max_range[1]: value = max_range[1]
+        elif value < max_range[0]: value = max_range[0]
+        return value
 
     @response_types('application/json', default='application/json')
     def get(self, path, request):
@@ -79,7 +85,7 @@ class DummyAdapter(ApiAdapter):
         :param request: HTTP request object
         :return: an ApiAdapterResponse object containing the appropriate response
         """
-        if path == 'background_task_count':
+        if path.strip("/") == 'background_task_count':
             response = {'background_task_count': self.background_task_counter}
         else:
             response = {'response': 'DummyAdapter: GET on path {}'.format(path)}
