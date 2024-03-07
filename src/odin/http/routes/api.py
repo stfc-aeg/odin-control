@@ -21,6 +21,8 @@ if PY3:
 else:
     from odin.http.handlers.api import ApiHandler
 
+from odin.http.handlers.api_ws_handler import WsHandler
+
 
 class ApiVersionHandler(tornado.web.RequestHandler):
     """API version handler to allow client to resolve supported version.
@@ -109,6 +111,9 @@ class ApiRoute(Route):
         # a trailing slash for maximum compatibility
         self.add_handler((r"/api/(.*?)/(.*?)/(.*)", ApiHandler, handler_params))
         self.add_handler((r"/api/(.*?)/(.*?)/?", ApiHandler, handler_params))
+
+        ws_handler_params = dict(route=self) #, enable_cors=enable_cors, cors_origin=cors_origin)
+        self.add_handler((r'/ws', WsHandler, ws_handler_params))
 
         self.adapters = {}
 

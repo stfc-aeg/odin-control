@@ -10,11 +10,64 @@ loaded adapters to communicate with them.
 Tim Nicholls, STFC Application Engineering
 """
 import logging
+import asyncio
+import tornado
+import json
+
 from tornado.ioloop import PeriodicCallback
 
 from odin.adapters.adapter import (ApiAdapter, ApiAdapterRequest,
                                    ApiAdapterResponse, request_types, response_types)
 from odin.util import decode_request_body
+
+from tornado.options import define, options
+from tornado.web import RequestHandler
+from tornado.websocket import WebSocketHandler
+from tornado.websocket import websocket_connect
+
+define("host", default="127.0.0.1", help="Server host")
+define("wsport", default=8889, help="websocket port", type=int)
+
+
+# class Application(tornado.web.Application):
+
+#     def __init__(self):
+#         handlers = [
+#             (r"/ws", Handler1),
+#             (r"/api", Handler2)
+#         ]
+
+#         # for handler in handlers:
+#         #     print(handler)
+
+#         settings = dict()
+
+#         super().__init__(handlers, **settings)
+
+# class Handler1(WebSocketHandler):
+#     def open(self):
+#         logging.info("WebSocket connection opened from %r", self.request.host)
+#         # self.write_message("Hello!!!!!")
+
+#     def on_close(self):
+#         # self.write_message("Bye!!!!!")
+#         logging.info("Websocket connection closed from %r", self.request.host)
+
+#     def send_message(self, message):
+#         logging.info("Sending message: %r", message)
+#         self.write_message(message)
+
+#     def on_message(self, message):
+#         logging.info("Message received: %r", message)
+#         self.send_message("Message was received.")
+
+
+# class Handler2(RequestHandler):
+#     def get(self):
+#         self.write("hello")
+
+#     def put(self):
+#         self.write("hello")
 
 
 class DummyAdapter(ApiAdapter):
@@ -85,6 +138,8 @@ class DummyAdapter(ApiAdapter):
             }
         else:
             response = {'response': 'DummyAdapter: GET on path {}'.format(path)}
+        
+        logging.debug("******************message get**********")
 
         content_type = 'application/json'
         status_code = 200
@@ -93,6 +148,7 @@ class DummyAdapter(ApiAdapter):
 
         return ApiAdapterResponse(response, content_type=content_type,
                                   status_code=status_code)
+
 
     @request_types('application/json', 'application/vnd.odin-native')
     @response_types('application/json', default='application/json')
@@ -108,6 +164,8 @@ class DummyAdapter(ApiAdapter):
         response = {'response': 'DummyAdapter: PUT on path {}'.format(path)}
         content_type = 'application/json'
         status_code = 200
+
+        logging.debug("******************message set**********")
 
         logging.debug(response)
 
@@ -215,3 +273,18 @@ class IacDummyAdapter(ApiAdapter):
         self.adapters = dict((k, v) for k, v in adapters.items() if v is not self)
 
         logging.debug("Received following dict of Adapters: %s", self.adapters)
+
+
+# async def main():
+#     tornado.options.parse_command_line()
+#     app = Application()
+#     app.listen(options.wsport)
+
+#     # ws_uri = f"ws://{options.host}:{options.wsport}/ws"
+#     # ws = websocket_connect(ws_uri)
+
+#     await asyncio.Event().wait()
+
+
+# if __name__ == "__main__":
+#     asyncio.run(main())
