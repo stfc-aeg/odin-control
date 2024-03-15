@@ -21,10 +21,8 @@ class WsHandler(WebSocketHandler):
 
     def open(self):
         logging.info("WebSocket connection opened from %r", self.request.host)
-        # self.write_message("Hello!!!!!")
 
     def on_close(self):
-        # self.write_message("Bye!!!!!")
         logging.info("Websocket connection closed from %r", self.request.host)
 
     def on_message(self, message):
@@ -58,16 +56,22 @@ class WsHandler(WebSocketHandler):
                 if adapter_name in self.route.adapters:
                     # if the adapter exists, perform request
                     logging.info("Adapter '" + adapter_name + "' found.")
-                    request = ApiAdapterRequest(None)
-                    # get adapter
-                    passed_adapter = self.route.adapters.get(adapter_name)
-                    # pass path if it exists in message (list will be 2 items), else pass None
-                    if len(split_n) == 2:
-                        res = passed_adapter.put(path, request)
-                    else:
-                        res = passed_adapter.put(None, request)
-                    # logging.info("%s", res.data)
-                    self.write_message(res.data)
+                    # As the set_to dictionary can have multiple put requests in,
+                    # loop through each key value pair
+                    for key, value in set_to.items():
+                        # json requires a dictionary, so create a new one
+                        new_set = {key: value}
+                        request = ApiAdapterRequest(json.dumps(new_set))
+                        # get adapter
+                        passed_adapter = self.route.adapters.get(adapter_name)
+                        # pass path if it exists in message (list will be 2 items), else pass None
+                        if len(split_n) == 2:
+                            res = passed_adapter.put(path, request)
+                            # logging.debug(res.status_code)
+                        else:
+                            res = passed_adapter.put(None, request)
+                        # logging.info("%s", res.data)
+                        self.write_message(res.data)
                 else:
                     # else, output error message
                     logging.info("Adapter '" + adapter_name + "' not found.")
@@ -102,7 +106,6 @@ class WsHandler(WebSocketHandler):
                         res = passed_adapter.get(path, request)
                     else:
                         res = passed_adapter.get(None, request)
-                    # logging.info("%s", res.data)
                     self.write_message(res.data)
                 else:
                     # else, output error message
@@ -110,16 +113,3 @@ class WsHandler(WebSocketHandler):
 
         else:
             logging.info("Invalid command: " + command)
-
-
-        # logging.info(self.route)
-        # logging.info(self.route.adapters)
-        # logging.info(self.route.handlers)
-
-
-# class Handler2(RequestHandler):
-#     def get(self):
-#         self.write("hello")
-
-#     def put(self):
-#         self.write("hello")
