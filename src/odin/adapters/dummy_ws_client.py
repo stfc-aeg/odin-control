@@ -49,6 +49,7 @@ async def tornado_ws_client(ws_uri):
     num_messages += len(get_message["paths"])
     print("Expecting back " + str(num_messages) + " messages.")
 
+    # retrieve responses
     count = 0
     while count < num_messages:
         response = await ws.read_message()
