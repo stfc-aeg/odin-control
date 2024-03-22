@@ -22,31 +22,31 @@ async def tornado_ws_client(ws_uri):
 
 
     # set message
+    # set_message = {
+    #     "cmd": "set",
+    #     "paths": {
+    #         "workshop/background_task": {
+    #             "enable": False,
+    #             "interval": 0.5
+    #         }
+    #     }
+    # }
+
     set_message = {
         "cmd": "set",
         "paths": {
-            "workshop/background_task": {
-                "enable": False,
-                "interval": 0.5
-            }
+            "workshop/background_task/enable": False,
+            "workshop/background_task/interval": 0.5
         }
     }
+
+
 
     ws.write_message(json.dumps(set_message))
 
 
-    # find out how many messages are expected back
-    num_messages = 0
-
-    # add number of set_message requests
-    # as the value in set_message["paths"] is a dictionary which
-    # can have multiple key/value pairs, find how many pairs
-    # there are in order for num_messages to be correct
-    for path in (set_message["paths"].keys()):
-        num_messages += len(set_message["paths"][path])
-
-    # add number of get_message requests
-    num_messages += len(get_message["paths"])
+    # calculate number of messages to be returned
+    num_messages = len(get_message["paths"]) + len(set_message["paths"])
     print("Expecting back " + str(num_messages) + " messages.")
 
     # retrieve responses

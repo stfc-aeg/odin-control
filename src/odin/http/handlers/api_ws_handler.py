@@ -32,12 +32,12 @@ class WsHandler(WebSocketHandler):
     def get_message(self, jsonMessage, command):
         for n in (jsonMessage["paths"]):
             # split up passed path 
-            split_n = n.split('/', 1)
+            split_once = n.split('/', 1)
             # set variables
-            adapter_name = split_n[0]
+            adapter_name = split_once[0]
             # if path was passed, set it, if not, set None
-            if len(split_n) == 2:
-                path = split_n[1]
+            if len(split_once) == 2:
+                path = split_once[1]
             else:
                 path = "none"
             logging.info("Command: %s, Adapter: %s, Path: %s",
@@ -53,7 +53,7 @@ class WsHandler(WebSocketHandler):
                 # get adapter
                 passed_adapter = self.route.adapters.get(adapter_name)
                 # pass path if it exists in message (list will be 2 items), else pass None
-                if len(split_n) == 2:
+                if len(split_once) == 2:
                     res = passed_adapter.get(path, request)
                 else:
                     res = passed_adapter.get(None, request)
@@ -65,11 +65,12 @@ class WsHandler(WebSocketHandler):
     def set_message(self, jsonMessage, command):
         for n in (jsonMessage["paths"]):
             # split up passed path
-            split_n = n.split('/', 1)
+            split_once = n.split('/', 1)
             # set variables
-            adapter_name = split_n[0]
-            if len(split_n) == 2:
-                path = split_n[1]
+            adapter_name = split_once[0]
+            # if path was passed, set it and if not, set None. set_to is set accordingly
+            if len(split_once) == 2:
+                path = split_once[1]
                 set_to = jsonMessage["paths"][adapter_name + "/" + path]
             else:
                 path = "none"
@@ -86,15 +87,41 @@ class WsHandler(WebSocketHandler):
                 logging.info("Adapter '" + adapter_name + "' found.")
                 # As the set_to dictionary can have multiple put requests in,
                 # loop through each key value pair
-                for key, value in set_to.items():
-                    # json requires a dictionary, so create a new one
-                    new_set = {key: value}
-                    request = ApiAdapterRequest(json.dumps(new_set))
+                if type(set_to) == dict:
+                    # set_to and path can be passed as they are
+                    request = ApiAdapterRequest(json.dumps(set_to))
                     # get adapter
                     passed_adapter = self.route.adapters.get(adapter_name)
                     # pass path if it exists in message (list will be 2 items), else pass None
-                    if len(split_n) == 2:
+                    if len(split_once) == 2:
                         res = passed_adapter.put(path, request)
+                    else:
+                        res = passed_adapter.put(None, request)
+                    self.write_message(res.data)
+                else:
+                    # set_to and path need modifying before passing
+                    # split path by slashes
+                    split_n = path.split('/')
+                    # key will be last item in list
+                    key = split_n[-1]
+                    # rest of the list is formed into new path
+                    if len(split_n) >= 2:
+                        new_path = "" + split_n[0]
+                        a = 1
+                        while (a + 1) < len(split_n):
+                            new_path += "/" + str(split_n[a])
+                            a += 1
+                    else:
+                        #there is no passed path
+                        new_path = "none"
+                    # json requires a dictionary, so create a new one
+                    new_set_to = {key: set_to}
+                    request = ApiAdapterRequest(json.dumps(new_set_to))
+                    # get adapter
+                    passed_adapter = self.route.adapters.get(adapter_name)
+                    # pass path if it exists in message (list will be 2+ items), else pass None
+                    if len(split_n) >= 2:
+                        res = passed_adapter.put(new_path, request)
                     else:
                         res = passed_adapter.put(None, request)
                     self.write_message(res.data)
