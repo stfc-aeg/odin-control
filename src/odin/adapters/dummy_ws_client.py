@@ -22,16 +22,6 @@ async def tornado_ws_client(ws_uri):
 
 
     # set message
-    # set_message = {
-    #     "cmd": "set",
-    #     "paths": {
-    #         "workshop/background_task": {
-    #             "enable": False,
-    #             "interval": 0.5
-    #         }
-    #     }
-    # }
-
     set_message = {
         "cmd": "set",
         "paths": {
@@ -39,8 +29,6 @@ async def tornado_ws_client(ws_uri):
             "workshop/background_task/interval": 0.5
         }
     }
-
-
 
     ws.write_message(json.dumps(set_message))
 

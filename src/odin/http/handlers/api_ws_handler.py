@@ -2,12 +2,9 @@ import logging
 import tornado
 import json
 
-# from tornado.web import RequestHandler
 from tornado.websocket import WebSocketHandler
-
-from odin.http.handlers.base import BaseApiHandler
-
 from odin.adapters.adapter import ApiAdapterRequest
+
 
 class WsHandler(WebSocketHandler):
 
@@ -30,6 +27,7 @@ class WsHandler(WebSocketHandler):
 
 
     def get_message(self, jsonMessage, command):
+        # for each passed path (each request)
         for n in (jsonMessage["paths"]):
             # split up passed path 
             split_once = n.split('/', 1)
@@ -45,9 +43,8 @@ class WsHandler(WebSocketHandler):
                             adapter_name,
                             path)
 
-            # check the adapter exists
+            # check the adapter exists, if so, do request
             if adapter_name in self.route.adapters:
-                # if the adapter exists, perform request
                 logging.info("Adapter '" + adapter_name + "' found.")
                 request = ApiAdapterRequest(None)
                 # get adapter
@@ -63,6 +60,7 @@ class WsHandler(WebSocketHandler):
                 logging.info("Adapter '" + adapter_name + "' not found.")
 
     def set_message(self, jsonMessage, command):
+        # for each passed path (each request)
         for n in (jsonMessage["paths"]):
             # split up passed path
             split_once = n.split('/', 1)
@@ -81,12 +79,11 @@ class WsHandler(WebSocketHandler):
                             path,
                             set_to)
 
-            # check the adapter exists
+            # check the adapter exists, if so, do request
             if adapter_name in self.route.adapters:
-                # if the adapter exists, perform request
                 logging.info("Adapter '" + adapter_name + "' found.")
-                # As the set_to dictionary can have multiple put requests in,
-                # loop through each key value pair
+                # Check if set_to is a dictionary or not
+                # As the request method differs if so
                 if type(set_to) == dict:
                     # set_to and path can be passed as they are
                     request = ApiAdapterRequest(json.dumps(set_to))
@@ -99,8 +96,7 @@ class WsHandler(WebSocketHandler):
                         res = passed_adapter.put(None, request)
                     self.write_message(res.data)
                 else:
-                    # set_to and path need modifying before passing
-                    # split path by slashes
+                    # path needs modifying - split path up by slashes
                     split_n = path.split('/')
                     # key will be last item in list
                     key = split_n[-1]
@@ -114,7 +110,7 @@ class WsHandler(WebSocketHandler):
                     else:
                         #there is no passed path
                         new_path = "none"
-                    # json requires a dictionary, so create a new one
+                    # set_to needs to be converted into a dictionary
                     new_set_to = {key: set_to}
                     request = ApiAdapterRequest(json.dumps(new_set_to))
                     # get adapter
@@ -137,13 +133,13 @@ class WsHandler(WebSocketHandler):
         jsonMessage = json.loads(message)
         command = jsonMessage["cmd"]
 
-        if command == "set":
-            # call set_message function
-            self.set_message(jsonMessage, command)
-
-        elif command == "get":
+        if command == "get":
             # call get_message function
             self.get_message(jsonMessage, command)
+
+        elif command == "set":
+            # call set_message function
+            self.set_message(jsonMessage, command)
 
         else:
             # command is invalid
