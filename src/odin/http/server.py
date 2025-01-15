@@ -7,9 +7,11 @@ default route used to serve static content.
 Tim Nicholls, STFC Application Engineering
 """
 import logging
+import ssl
+
 import tornado.gen
-import tornado.web
 import tornado.ioloop
+import tornado.web
 from tornado.log import access_log
 
 from odin.config.parser import ConfigError
@@ -67,13 +69,54 @@ class HttpServer(object):
         # Create the Tornado web application for these handlers
         self.application = tornado.web.Application(handlers, **settings)
 
-    def listen(self, port, host=''):
-        """Listen for HTTP client requests.
+        # If HTTP is enabled, configure the application to listen on the specified address and
+        # port
+        self.http_server = None
+        if config.enable_http:
+            try:
+                self.http_server = self.application.listen(config.http_port, config.http_addr)
+                logging.info('HTTP server listening on %s:%s', config.http_addr, config.http_port)
+            except OSError as listen_err:
+                logging.error(
+                    "Failed to create HTTP server on %s:%s: %s", 
+                    config.http_addr, config.http_port, str(listen_err)
+                )
 
-        :param port: port to listen on
-        :param host: host address to listen on
+        # If HTTPS is enabled, create a SSL context and load the specified certificate and key,
+        # then configure the application to listen on the specified address and port
+        self.https_server = None
+        if config.enable_https:
+            try:
+                ssl_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+                ssl_ctx.load_cert_chain(config.ssl_cert_file, config.ssl_key_file)
+            except (ssl.SSLError, FileNotFoundError, TypeError) as ctx_err:
+                logging.error("Failed to create SSL context for HTTPS: %s", str(ctx_err))
+            else:
+                try:
+                    self.https_server = self.application.listen(
+                        config.https_port, config.http_addr, ssl_options=ssl_ctx
+                    )
+                    logging.info(
+                        'HTTPS server listening on %s:%s', config.http_addr, config.https_port
+                    )
+                except OSError as listen_err:
+                    logging.error(
+                        "Failed to create HTTPS server on %s:%s: %s", 
+                        config.http_addr, config.https_port, str(listen_err)
+                    )
+
+    def stop(self):
+        """Stop the HTTP/S server(s).
+
+        This method stops the underlying HTTP/S server(s) cleanly, preventing any new connections
+        from being accepted.
         """
-        self.application.listen(port, host)
+        if self.http_server:
+            logging.debug("Stopping HTTP server")
+            self.http_server.stop()
+        if self.https_server:
+            logging.debug("Stopping HTTPS server")
+            self.https_server.stop()
 
     def log_request(self, handler):
         """Log completed request information.

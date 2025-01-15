@@ -37,7 +37,14 @@ class OdinTestServer(object):
     server_addr = '127.0.0.1'
     server_api_version = 0.1
 
-    def __init__(self, server_port=server_port, adapter_config=None, access_logging=None):
+    def __init__(
+        self,
+        server_port=server_port,
+        adapter_config=None,
+        access_logging=None,
+        graylog_server=None,
+        graylog_static_fields=None,
+    ):
 
         self.server_thread = None
         self.server_event_loop = None
@@ -50,8 +57,10 @@ class OdinTestServer(object):
 
         parser.add_section('server')
         parser.set('server', 'debug_mode', '1')
+        parser.set('server', 'enable_http', 'true')
         parser.set('server', 'http_port', str(server_port))
         parser.set('server', 'http_addr', self.server_addr)
+        parser.set('server', 'enable_https', 'false')
         parser.set('server', 'static_path', static_path)
 
         if adapter_config is not None:
@@ -60,6 +69,11 @@ class OdinTestServer(object):
 
         if access_logging is not None:
             parser.set("server", 'access_logging', access_logging)
+
+        if graylog_server is not None:
+            parser.set("server", 'graylog_server', graylog_server)
+            if graylog_static_fields is not None:
+                parser.set("server", 'graylog_static_fields', graylog_static_fields)
 
         parser.add_section('tornado')
         parser.set('tornado', 'logging', 'debug')

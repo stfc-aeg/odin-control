@@ -5,14 +5,15 @@ import sys
 
 import pytest
 if sys.version_info[0] == 3:  # pragma: no cover
-    from unittest.mock import Mock
+    from unittest import mock
 else:                         # pragma: no cover
-    from mock import Mock
+    import mock
 
 from odin.http.server import HttpServer
 from odin import main
 
 from tests.utils import OdinTestServer, log_message_seen
+from tests.ssl_utils import SslTestCert
 
 @pytest.fixture(scope="class")
 def odin_test_server():
@@ -139,6 +140,39 @@ class TestOdinServer(object):
         count = result.json()['response']['background_task_count']
         assert count > 0
 
+def test_graylog_handler_pygelf():
+    """Test that gelf handler is added if pygelf is available"""
+    try:
+        import pygelf
+        del pygelf
+    except ImportError:
+        return  # Cannot test pygelf functionality
+
+    with mock.patch.object(logging.getLogger(), "addHandler") as mock_add_handler, \
+        mock.patch("pygelf.GelfUdpHandler") as mock_gelf:
+
+        server = OdinTestServer(
+            graylog_server="127.0.0.1:12210",
+            graylog_static_fields="key1=val1,key2=val2"
+        )
+        server.stop()
+
+        mock_add_handler.assert_called_with(mock_gelf.return_value)
+
+
+def test_graylog_handler_no_pygelf(caplog):
+    """Test that an error is logged if called without pygelf available"""
+    with mock.patch.dict(sys.modules, {"pygelf": None}):
+        server = OdinTestServer(graylog_server="127.0.0.1:12210")
+        server.stop()
+
+    assert log_message_seen(
+        caplog,
+        logging.ERROR,
+        "Cannot add graylog handler - pygelf is not installed"
+    )
+
+
 class TestBadServerConfig(object):
     """Class for testing a server with a bad configuration argument."""
 
@@ -151,6 +185,13 @@ class TestBadServerConfig(object):
 class ServerConfig():
     """Simple class for creating a dummy parsed server configuration."""
     def __init__(self):
+        self.enable_http = True
+        self.enable_https = False
+        self.http_addr = '127.0.0.1'
+        self.http_port = 8888
+        self.https_port = 8443
+        self.ssl_cert_file = 'cert.pem'
+        self.ssl_key_file = 'key.pem'
         self.debug_mode = False
         self.log_function = None
         self.static_path = "./static"
@@ -174,6 +215,7 @@ class TestOdinServerAccessLogging():
         bad_level  = 'wibble'
         server_config.access_logging = bad_level
         http_server = HttpServer(server_config)
+        http_server.stop()
 
         assert log_message_seen(caplog, logging.ERROR,
             'Access logging level {} not recognised'.format(bad_level))
@@ -193,6 +235,21 @@ class TestOdinServerMissingAdapters(object):
         assert log_message_seen(caplog, logging.WARNING,
             'Failed to resolve API adapters: No adapters specified in configuration',
             when="setup")
+
+class TestOdinServerListenFailed(object):
+
+    def test_http_server_listen_fails(self, caplog):
+
+        config_1 = ServerConfig()
+        config_2 = ServerConfig()
+
+        server1 = HttpServer(config_1)
+        server2 = HttpServer(config_2)
+
+        server1.stop()
+        server2.stop()
+
+        assert log_message_seen(caplog, logging.ERROR, "Address already in use")
 
 class MockHandler(object):
     """Class for mocking tornado request handler objects."""
@@ -250,10 +307,13 @@ class LoggingTestServer(object):
                 msg_seen = True
         return msg_seen
 
+    def __del__(self):
+        self.http_server.stop()
+
 @pytest.fixture()
 def logging_test_server(caplog):
     """
-    Test fixture for staring a logging test server. Note this has function scope rather than
+    Test fixture for starting a logging test server. Note this has function scope rather than
     class, as the pytest caplog fixture only has function scope.
     """
     test_server = LoggingTestServer(caplog)
@@ -273,3 +333,71 @@ class TestOdinHttpServerLogging(object):
     def test_error_logging(self, logging_test_server):
         """Test that failing requests log at error level."""
         assert logging_test_server.do_log_request(503, logging.ERROR)
+
+class HttpsTestServer():
+
+    def __init__(self, caplog):
+
+        self.server_config = ServerConfig()
+        self.server_config.enable_https = True
+        self.https_server = HttpServer(self.server_config)
+        self.caplog = caplog
+
+    def __del__(self):
+        self.https_server.stop()
+
+@pytest.fixture()
+def https_test_server(caplog):
+    """
+    Test fixture for starting a logging test server with HTTPS enabled
+    """
+    test_server = HttpsTestServer(caplog)
+    yield test_server
+
+@pytest.fixture(scope='class')
+def ssl_test_cert():
+
+    test_cert = SslTestCert()
+    yield test_cert
+
+class TestOdinHttpsServer():
+
+    def test_https_valid_config(self, server_config, ssl_test_cert, caplog):
+
+        server_config.enable_https = True
+        server_config.ssl_cert_file = ssl_test_cert.cert_file 
+        server_config.ssl_key_file = ssl_test_cert.key_file 
+        server = HttpServer(server_config)
+        server.stop()
+
+        assert log_message_seen(
+            caplog, logging.INFO,
+            "HTTPS server listening on {}:{}".format(
+                server_config.http_addr, server_config.https_port
+            )
+        )
+
+    def test_https_no_ssl_files(self, server_config, caplog):
+        server_config.enable_https = True
+        server = HttpServer(server_config)
+        server.stop()
+        assert log_message_seen(
+            caplog, logging.ERROR,
+            "Failed to create SSL context for HTTPS: [Errno 2] No such file or directory",
+        )
+
+    def test_https_listen_error(self, server_config, ssl_test_cert, caplog):
+
+        server_config.enable_https = True
+        server_config.ssl_cert_file = ssl_test_cert.cert_file
+        server_config.ssl_key_file = ssl_test_cert.key_file
+        server_config.https_port = 443
+        server = HttpServer(server_config)
+        server.stop()
+
+        assert log_message_seen(
+            caplog, logging.ERROR,
+            "Failed to create HTTPS server on {}:{}: [Errno 13] Permission denied".format(
+                server_config.http_addr, server_config.https_port,
+            )
+        )
