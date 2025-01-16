@@ -3,12 +3,14 @@
         "adapter": "dummy",
         "get_path": "background_task_count",
         "interval": 0.1,
-        "retention": 60
+        "retention": 60,
+        "location": "dummy_1"
     },
     "dummy_30": {
         "average": true,
         "source": "dummy_1",
         "interval": 1,
-        "retention": 6
+        "retention": 6,
+        "location": "dummy_30"
     }
 }
